@@ -1,0 +1,2 @@
+,lr,num_layers,hidden_channels,dropout,batchnorm,l2,train,train_std,valid,valid_std,test,test_std
+gat,0.01,2,128,0.5,True,5e-07,88.6856,5.8036,80.7752,1.2706,80.6508,1.4537
