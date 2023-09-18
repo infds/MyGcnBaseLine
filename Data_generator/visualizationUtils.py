@@ -11,6 +11,7 @@ import argparse
 import seaborn as sns
 from abc import ABC,abstractmethod
 from sklearn.metrics import roc_curve,auc
+from  sklearn.model_selection import train_test_split
 from typing import Union
 
 def Cuda2Cpu(feature,label):
@@ -44,9 +45,6 @@ class ResultDrawer(ABC):
         self.task_type=task_type
         self.use_cuda=use_cuda
         self.dpi=dpi
-
-
-
     def read_file(self):
         data_raw=np.load(self.__file_path)
         if self.task_type != "all":
@@ -130,20 +128,29 @@ class KdeDrawer(ResultDrawer):
     ]
 """
 class RocDrawer(ResultDrawer):
-    def __init__(self,file_path, task_type, use_cuda,color_list,dpi,result_path,estimator_list,fig_size=(10, 10)):
+    def __init__(self,file_path,task_type, use_cuda,color_list,dpi,result_path,estimator_list,fig_size=(10, 10)):
         super().__init__(file_path, task_type,use_cuda,dpi,fig_size)
+        self.rocfile_path=file_path
         self.__result_path=result_path
         self.estimators=[]
         for model_type, param_package in estimator_list:
             estimator = Estimator(model_type, param_package)
+            estimator.create_estimator()
             self.estimators.append(estimator)
         self.setColorList(color_list)
         self.process()
 
     def read_result(self):
-        result=pd.read_csv(self.__result_path)
-        result=result.values
+        result=np.load(self.__result_path)
         self.__result=result
+
+    def read_data(self):
+        data=np.load(self.rocfile_path)
+        x = data['x'][:7000]
+        y = data['label'][:7000]
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=2)
+        return x_train,x_test,y_train,y_test
+
 
     def process(self):
         self.read_file()
@@ -151,12 +158,25 @@ class RocDrawer(ResultDrawer):
         self.plotDrawing()
 
     def drawer(self):
-        y_pred_DL = self.__result
-        y_test_DL = self.label
+        self.DL_drawer()
+        self.ML_drawer()
+
+    def DL_drawer(self):
+        y_pred_DL = self.__result["y_pred"]
+        y_test_DL = self.__result["label"]
         fpr_DL, tpr_DL, thresholds_DL = roc_curve(y_test_DL, y_pred_DL[:, 1])
         roc_auc_DL = auc(fpr_DL, tpr_DL)
         plt.plot(fpr_DL, tpr_DL, self.color[0], label=u'Our Model AUC = %0.3f' % roc_auc_DL)
 
+    def ML_drawer(self):
+        x_train, x_test, y_train, y_test=self.read_data()
+        i=1
+        for estimator in self.estimators:
+            y_score=estimator.process(x_train,y_train,x_test)[:,1]
+            fpr,tpr,_=roc_curve(y_test,y_score)
+            roc_auc=auc(fpr,tpr)
+            plt.plot(fpr, tpr, self.color[i], label=u'{} AUC = %0.3f'.format(estimator.model_type) % roc_auc)
+            i=i+1
     def plotDrawing(self):
         self.drawer()
         plt.legend(loc='lower right')
@@ -202,12 +222,20 @@ class Estimator():
         return prob_y
 
 
+class HeatMapDrawer():
 
 
 
 
 if __name__=='__main__':
-    RocDrawer(file_path="data.npz",task_type="all",use_cuda=False,color_list=["red"],dpi=300,result_path="模型输出结果.csv")
+    estimator_list = [
+        ('random_forest', {'max_depth':8,'max_samples':128}),
+        ('logistic_regression', {'C': 0.1, 'solver': 'liblinear'}),
+
+    ]
+    color_list=["#403990","#CF3D3E","#FBDD85","#80A6E2"]
+    RocDrawer(file_path="data.npz",task_type="all",use_cuda=False,color_list=color_list,dpi=300,result_path="Data\dl_result.npz",estimator_list=estimator_list)
+
 
 
 
